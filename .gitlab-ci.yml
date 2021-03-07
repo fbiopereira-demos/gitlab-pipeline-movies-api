@@ -1,0 +1,92 @@
+stages:
+  - test
+  - build
+  - deploy
+
+Behave Test:
+  stage: test
+
+  services:
+    - name: mongo:4.0.23
+      alias: mongo_service
+
+  image: fbiopereira/python-3.8.7-alpine-3.13:latest
+  script:
+    - export ENVIRONMENT=development
+    - export SERVICE_NAME=movies-api
+    - export LOG_PATH=/var/log/app/
+    - export MONGO_URI=mongodb://mongo_service:27017/movies
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+    - behave
+  except:
+    - tags
+ 
+
+Docker Build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - export DOCKER_TAG=`if [ $CI_COMMIT_BRANCH == "master" ]; then echo $CI_COMMIT_SHORT_SHA; else echo $CI_COMMIT_TAG | sed 's/v//g'; fi;`
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY_DOCKER
+  script:
+    - docker build -t "fbiopereira/pipeline_movies_api:$DOCKER_TAG" .
+    - docker push "fbiopereira/pipeline_movies_api:$DOCKER_TAG"
+  only:
+    - master
+    - tags
+
+
+Kubernetes Deploy Master:
+  stage: deploy
+  image: fbiopereira/kubectl-do:latest
+  variables:
+    NAMESPACE: movies-main
+    SERV_ACCOUNT: movies-sa
+    APP_ENVIRONMENT: development
+    MONGO_SERVICE: mongomain
+    HOST: main.165.227.253.23.nip.io
+    DOCKER_TAG: $CI_COMMIT_SHORT_SHA
+    ENV: stg
+  script:
+    - doctl auth init --access-token $DO_TKN
+    - doctl kubernetes cluster kubeconfig save $DO_K8S
+    - sed -i 's/<NAMESPACE>/'$NAMESPACE'/g' k8s/deployment.yaml
+    - sed -i 's/<SERV_ACCOUNT>/'$SERV_ACCOUNT'/g' k8s/deployment.yaml
+    - sed -i 's/<DOCKER_TAG>/'$DOCKER_TAG'/g' k8s/deployment.yaml
+    - sed -i 's/<APP_ENVIRONMENT>/'$APP_ENVIRONMENT'/g' k8s/deployment.yaml
+    - sed -i 's/<MONGO_SERVICE>/'$MONGO_SERVICE'/g' k8s/deployment.yaml
+    - sed -i 's/<HOST>/'$HOST'/g' k8s/ingress.yaml
+    - sed -i 's/<NAMESPACE>/'$NAMESPACE'/g' k8s/ingress.yaml
+    - sed -i 's/<NAMESPACE_SERVICE>/'$NAMESPACE'/g' k8s/service.yaml
+    - kubectl apply -f k8s/
+  only:
+    - master
+
+Kubernetes Deploy Prod:
+  stage: deploy
+  image: fbiopereira/kubectl-do:latest
+  variables:
+    NAMESPACE: movies-prod
+    SERV_ACCOUNT: movies-prod-sa
+    APP_ENVIRONMENT: production
+    MONGO_SERVICE: mongoprod
+    HOST: prod.165.227.253.23.nip.io
+    DOCKER_TAG: $CI_COMMIT_TAG
+    ENV: prod
+  script:
+    - doctl auth init --access-token $DO_TKN
+    - doctl kubernetes cluster kubeconfig save $DO_K8S
+    - sed -i 's/<NAMESPACE>/'$NAMESPACE'/g' k8s/deployment.yaml
+    - sed -i 's/<SERV_ACCOUNT>/'$SERV_ACCOUNT'/g' k8s/deployment.yaml
+    - sed -i 's/<DOCKER_TAG>/'$DOCKER_TAG'/g' k8s/deployment.yaml
+    - sed -i 's/<APP_ENVIRONMENT>/'$APP_ENVIRONMENT'/g' k8s/deployment.yaml
+    - sed -i 's/<MONGO_SERVICE>/'$MONGO_SERVICE'/g' k8s/deployment.yaml
+    - sed -i 's/<HOST>/'$HOST'/g' k8s/ingress.yaml
+    - sed -i 's/<NAMESPACE>/'$NAMESPACE'/g' k8s/ingress.yaml
+    - sed -i 's/<NAMESPACE_SERVICE>/'$NAMESPACE'/g' k8s/service.yaml
+    - kubectl apply -f k8s/
+  only:
+    - tags

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: movies-deployment
+  namespace: <NAMESPACE>
+spec:
+  selector:
+    matchLabels:
+      app: api-movies
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: api-movies
+    spec:
+      serviceAccount: <SERV_ACCOUNT>
+      containers:
+      - name: api-movies
+        image: fbiopereira/pipeline_movies_api:<DOCKER_TAG>
+        ports:
+        - containerPort: 80
+        env:
+        - name: SERVICE_NAME
+          value: movies-api
+        - name: ENVIRONMENT
+          value: <APP_ENVIRONMENT>
+        - name: LOG_PATH
+          value: /var/log/app/
+        - name: MONGO_URI
+          value: mongodb://<MONGO_SERVICE>-service:27017/movies
+        imagePullPolicy: Always
+        resources:
+          requests:
+            memory: "0Mi"
+            cpu: "0m"
+          limits:
+            memory: "300Mi"
+            cpu: "200m"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api-movies
+              topologyKey: kubernetes.io/hostname
+            weight: 100
