@@ -36,6 +36,4 @@ Then install requirements in your environment and run de command behave
     * It is the same cluster, but master branch goes to a namespace and tag to another one
     * Again Digital Ocean credentials must be configured in Gitlab Ci/CD variables interface
     
-
-- Gitlab still user master as default branch name. I haven't change it to Main, but fell free to do this change by yourself    
-    
+   
